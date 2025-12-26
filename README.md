@@ -1,30 +1,51 @@
-<h1>Email IMAP Backup Script</h1>
+<h1>Email IMAP Backup & Restore Toolkit</h1>
 
 <p>
-A Python-based IMAP email backup utility that downloads all mailbox folders
-and stores emails locally in <strong>.mbox</strong> format.
-Designed for scheduled backups and Synology NAS storage.
+A Python-based toolkit for <strong>backing up</strong>, <strong>searching</strong>, and <strong>restoring</strong>
+emails from IMAP servers using standard <code>.mbox</code> archives.
+Designed for reliability, manual recovery, and Synology NAS environments.
+</p>
+
+<hr/>
+
+<h2>Overview</h2>
+
+<p>
+This project consists of <strong>two independent tools</strong>:
+</p>
+
+<ul>
+  <li><strong>Email Backup Script</strong> – downloads and archives all IMAP folders</li>
+  <li><strong>Email Restore Tool</strong> – searches backups and restores individual emails</li>
+</ul>
+
+<p>
+Together, they provide a complete email disaster-recovery workflow.
 </p>
 
 <hr/>
 
 <h2>Features</h2>
+
 <ul>
-  <li>Connects securely to IMAP servers using SSL</li>
-  <li>Automatically discovers all mail folders</li>
-  <li>Backs up emails per folder into dated <code>.mbox</code> files</li>
-  <li>Supports large mailboxes with progress logging</li>
-  <li>Removes old backups automatically</li>
-  <li>Detailed logging to file and console</li>
+  <li>Secure IMAP (SSL) connection</li>
+  <li>Automatic discovery of all mailbox folders</li>
+  <li>Per-folder <code>.mbox</code> backups with timestamps</li>
+  <li>Search emails by subject, sender, body, or date</li>
+  <li>Restore emails directly to IMAP server</li>
+  <li>Export recovered emails as <code>.eml</code> files</li>
+  <li>Automatic cleanup of old backups</li>
+  <li>Detailed logging and progress reporting</li>
 </ul>
 
 <hr/>
 
 <h2>Technology Stack</h2>
+
 <ul>
   <li><strong>Language:</strong> Python 3</li>
-  <li><strong>Protocols:</strong> IMAP over SSL</li>
-  <li><strong>Storage:</strong> mbox format (standard mailbox archive)</li>
+  <li><strong>Protocol:</strong> IMAP over SSL</li>
+  <li><strong>Archive Format:</strong> mbox</li>
   <li><strong>Libraries:</strong>
     <ul>
       <li><code>imaplib</code></li>
@@ -37,11 +58,13 @@ Designed for scheduled backups and Synology NAS storage.
 
 <hr/>
 
-<h2>Folder Structure</h2>
+<h2>Project Structure</h2>
+
 <pre>
 project/
 │
-├── backup_script.py
+├── backup_emails.py
+├── restore_emails.py
 ├── README.md
 └── backups/
     ├── INBOX_20241218.mbox
@@ -51,93 +74,110 @@ project/
 
 <hr/>
 
-<h2>Configuration</h2>
+<h2>Email Backup Script</h2>
 
+<h3>Purpose</h3>
 <p>
-Edit the configuration section at the top of the script before running:
+Downloads all emails from every IMAP folder and stores them locally
+as date-stamped <code>.mbox</code> files.
 </p>
 
+<h3>Configuration</h3>
+
 <pre>
-IMAP_SERVER = "imap.host.com"
+IMAP_SERVER = "imap.example.com"
 IMAP_PORT = 993
-EMAIL_ADDRESS = "your_email@example.com"
+EMAIL_ADDRESS = "user@example.com"
 EMAIL_PASSWORD = "your_password"
-BACKUP_DIR = "/path/to/backup/directory"
+BACKUP_DIR = "/path/to/backup"
 LOG_FILE = "/path/to/log/file.log"
 </pre>
 
-<p>
-<strong>Important:</strong> Use an app-specific password if your email provider supports it.
-</p>
-
-<hr/>
-
-<h2>How It Works</h2>
-<ol>
-  <li>Connects to the IMAP server securely</li>
-  <li>Retrieves all selectable mail folders</li>
-  <li>Downloads every email in each folder</li>
-  <li>Stores messages in a date-stamped <code>.mbox</code> file</li>
-  <li>Logs progress and errors</li>
-  <li>Deletes backups older than 30 days</li>
-</ol>
-
-<hr/>
-
-<h2>Running the Script</h2>
+<h3>Run Backup</h3>
 
 <pre>
-python backup_script.py
+python backup_emails.py
 </pre>
 
+<h3>Retention Policy</h3>
+
 <p>
-The script will:
+Backups older than 30 days are automatically deleted.
 </p>
+
+<hr/>
+
+<h2>Email Restore Tool</h2>
+
+<h3>Purpose</h3>
+
+<p>
+Allows searching inside backup files and restoring individual emails.
+Useful for recovering deleted or lost messages.
+</p>
+
+<h3>Capabilities</h3>
+
 <ul>
-  <li>Create backup folders if missing</li>
-  <li>Generate daily backup files</li>
-  <li>Output progress to console and log file</li>
+  <li>Search by subject</li>
+  <li>Search by sender</li>
+  <li>Search email body content</li>
+  <li>View full email source</li>
+  <li>Restore to IMAP folder</li>
+  <li>Save email as <code>.eml</code></li>
 </ul>
 
-<hr/>
-
-<h2>Backup Retention</h2>
-
-<p>
-Old backup files are automatically removed after <strong>30 days</strong>.
-You can change this by editing:
-</p>
+<h3>Configuration</h3>
 
 <pre>
-cleanup_old_backups(days_to_keep=30)
+BACKUP_DIR = "/volume1/mail-backup/mailboxes/example@domain.com"
+IMAP_SERVER = "imap.example.com"
+IMAP_PORT = 993
+EMAIL_ADDRESS = "example@domain.com"
+EMAIL_PASSWORD = "your_password"
 </pre>
+
+<h3>Run Restore Tool</h3>
+
+<pre>
+python restore_emails.py
+</pre>
+
+<h3>Restore Options</h3>
+
+<ul>
+  <li>Save recovered email as <code>.eml</code></li>
+  <li>Restore directly to IMAP (e.g. INBOX)</li>
+  <li>View raw email content</li>
+</ul>
 
 <hr/>
 
 <h2>Security Notes</h2>
 
 <ul>
-  <li>Credentials are stored in plain text — protect the script file</li>
-  <li>No encryption is applied to backup files</li>
-  <li>Use secure filesystem permissions</li>
-  <li>Recommended to run on trusted servers only</li>
+  <li>Credentials are stored in plain text</li>
+  <li>No encryption at rest for backups</li>
+  <li>Protect filesystem permissions</li>
+  <li>Recommended for trusted environments only</li>
 </ul>
 
 <hr/>
 
 <h2>Use Cases</h2>
+
 <ul>
-  <li>Personal email backups</li>
-  <li>Small business mailbox archiving</li>
+  <li>Email disaster recovery</li>
   <li>Synology NAS scheduled backups</li>
-  <li>Disaster recovery preparation</li>
+  <li>Mailbox auditing and forensics</li>
+  <li>Manual recovery of deleted emails</li>
 </ul>
 
 <hr/>
 
 <h2>License</h2>
+
 <p>
-This project is provided as-is for educational and personal use.
+Provided as-is for personal and administrative use.
 No warranty is provided.
 </p>
-
