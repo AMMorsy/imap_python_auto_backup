@@ -1,0 +1,199 @@
+import imaplib
+import email
+import os
+import sys
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+import mailbox
+import logging
+
+
+# Configuration
+IMAP_SERVER = "imap.host.com"
+IMAP_PORT = 993
+EMAIL_ADDRESS = "type_your_email"
+EMAIL_PASSWORD = "type_your_email_password"
+BACKUP_DIR = "your_synology_path"  # Adjust to your Synology path
+LOG_FILE = "path/to/your/log/folder"
+
+# Setup logging
+os.makedirs(BACKUP_DIR, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+
+def connect_to_imap():
+    """Connect to IMAP server"""
+    try:
+        logging.info(f"Connecting to {IMAP_SERVER}...")
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        logging.info("Successfully connected and logged in")
+        return mail
+    except Exception as e:
+        logging.error(f"Failed to connect: {str(e)}")
+        sys.exit(1)
+
+def get_folders(mail):
+    """Get list of all email folders"""
+    try:
+        status, folders = mail.list()
+        folder_list = []
+        
+        if status != 'OK':
+            logging.error("Failed to list folders")
+            return []
+        
+        logging.info(f"Raw folder list response: {folders}")
+        
+        for folder in folders:
+            folder_str = folder.decode() if isinstance(folder, bytes) else str(folder)
+            
+            # Hostinger format: (\Flags) "." INBOX.FolderName
+            # We need to extract everything after the delimiter
+            parts = folder_str.split('"."')
+            if len(parts) > 1:
+                # Get the folder name (everything after the delimiter)
+                folder_name = parts[1].strip().strip('"')
+            else:
+                # Fallback: try to get the last part after space
+                parts = folder_str.split()
+                folder_name = parts[-1] if parts else ""
+            
+            # Skip folders marked as \Noselect (can't be opened)
+            if folder_name and '\\Noselect' not in folder_str:
+                folder_list.append(folder_name)
+                logging.info(f"Added folder: {folder_name}")
+            elif '\\Noselect' in folder_str:
+                logging.info(f"Skipped unselectable folder: {folder_name}")
+        
+        return folder_list
+    except Exception as e:
+        logging.error(f"Error getting folders: {str(e)}")
+        return []
+
+def backup_folder(mail, folder_name):
+    """Backup a specific folder"""
+    try:
+        logging.info(f"Backing up folder: {folder_name}")
+        
+        # Select the folder
+        status, messages = mail.select(f'"{folder_name}"', readonly=True)
+        if status != 'OK':
+            logging.warning(f"Could not select folder: {folder_name}")
+            return 0
+        
+        # Get total number of emails
+        num_messages = int(messages[0])
+        logging.info(f"Found {num_messages} messages in {folder_name}")
+        
+        if num_messages == 0:
+            return 0
+        
+        # Create backup filename with date
+        safe_folder_name = folder_name.replace('/', '_').replace(' ', '_')
+        date_str = datetime.now().strftime('%Y%m%d')
+        mbox_path = os.path.join(BACKUP_DIR, f"{safe_folder_name}_{date_str}.mbox")
+        
+        # Create mbox file
+        mbox = mailbox.mbox(mbox_path)
+        mbox.lock()
+        
+        # Fetch all emails
+        status, message_ids = mail.search(None, 'ALL')
+        if status != 'OK':
+            logging.warning(f"No messages found in {folder_name}")
+            mbox.unlock()
+            mbox.close()
+            return 0
+        
+        email_ids = message_ids[0].split()
+        backed_up = 0
+        
+        for i, email_id in enumerate(email_ids, 1):
+            try:
+                # Fetch email
+                status, msg_data = mail.fetch(email_id, '(RFC822)')
+                if status != 'OK':
+                    continue
+                
+                # Parse email
+                raw_email = msg_data[0][1]
+                email_message = email.message_from_bytes(raw_email)
+                
+                # Add to mbox
+                mbox.add(email_message)
+                backed_up += 1
+                
+                if i % 100 == 0:
+                    logging.info(f"Progress: {i}/{len(email_ids)} emails backed up from {folder_name}")
+                    
+            except Exception as e:
+                logging.error(f"Error backing up email {email_id}: {str(e)}")
+                continue
+        
+        mbox.unlock()
+        mbox.close()
+        
+        logging.info(f"Successfully backed up {backed_up} emails from {folder_name}")
+        return backed_up
+        
+    except Exception as e:
+        logging.error(f"Error backing up folder {folder_name}: {str(e)}")
+        return 0
+
+def cleanup_old_backups(days_to_keep=30):
+    """Remove backup files older than specified days"""
+    try:
+        cutoff_time = datetime.now().timestamp() - (days_to_keep * 86400)
+        removed = 0
+        
+        for filename in os.listdir(BACKUP_DIR):
+            if filename.endswith('.mbox'):
+                filepath = os.path.join(BACKUP_DIR, filename)
+                if os.path.getmtime(filepath) < cutoff_time:
+                    os.remove(filepath)
+                    removed += 1
+                    logging.info(f"Removed old backup: {filename}")
+        
+        if removed > 0:
+            logging.info(f"Cleaned up {removed} old backup files")
+    except Exception as e:
+        logging.error(f"Error during cleanup: {str(e)}")
+
+def main():
+    """Main backup function"""
+    logging.info("=" * 60)
+    logging.info("Starting email backup process")
+    logging.info("=" * 60)
+    
+    # Connect to IMAP
+    mail = connect_to_imap()
+    
+    # Get all folders
+    folders = get_folders(mail)
+    logging.info(f"Found {len(folders)} folders to backup")
+    
+    # Backup each folder
+    total_backed_up = 0
+    for folder in folders:
+        count = backup_folder(mail, folder)
+        total_backed_up += count
+    
+    # Logout
+    mail.logout()
+    
+    # Cleanup old backups
+    cleanup_old_backups(days_to_keep=30)
+    
+    logging.info("=" * 60)
+    logging.info(f"Backup complete! Total emails backed up: {total_backed_up}")
+    logging.info("=" * 60)
+
+if __name__ == "__main__":
+    main()
